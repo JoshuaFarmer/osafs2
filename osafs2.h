@@ -1,19 +1,16 @@
 #ifndef OSAFS2
 #define OSAFS2
 
-extern void * malloc(int);
-extern void free(void *);
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
-#define CLUSTSZ 503
+#define CLUSTSZ 1024
 #define MFC 512
 #define MCC 512
-#define EOF -1
 
 int current_path_idx = -1;
 
-typedef int FILE;
+typedef int OsaFILE;
 
 typedef struct
 {
@@ -29,8 +26,8 @@ typedef struct
 typedef struct
 {
         bool Taken;
-        int  Fileidx;
-        int  NextFAEIdx; // 0 on end of file
+        int  OsaFILEidx;
+        int  NextFAEIdx; // 0 on end of OsaFILE
         char Cluster[CLUSTSZ];
 } FAE; // fat allocation entry, part of the FAT.
 
@@ -70,7 +67,7 @@ int ffefae()
         return -1;
 }
 
-int ffefd() // find first _Empty file desc
+int ffefd() // find first _Empty OsaFILE desc
 {
         for (int i = 0; i < MFC; ++i)
         {
@@ -96,14 +93,14 @@ int _Exists(const char * name, int parent_idx) // return index + 1 if _Exists
         return 0;
 }
 
-FILE* fopen(const char * name, ...)
+OsaFILE* Osafopen(const char * name, ...)
 {
-        FILE * f = malloc(sizeof(f));
+        OsaFILE * f = malloc(sizeof(f));
         *f = _Exists(name, current_path_idx);
         return f;
 }
 
-void fclose(FILE * fp)
+void Osafclose(OsaFILE * fp)
 {
         free(fp);
 }
@@ -112,7 +109,7 @@ void FreeFAE(int FAEIdx)
 {
         if (FAEIdx == -1 || FAEIdx >= MFC) return;
         memset(FAT0[FAEIdx].Cluster,0,CLUSTSZ);
-        FAT0[FAEIdx].Fileidx=-1;
+        FAT0[FAEIdx].OsaFILEidx=-1;
         if (FAT0[FAEIdx].NextFAEIdx)
         {
                 FreeFAE(FAT0[FAEIdx].NextFAEIdx);
@@ -121,18 +118,18 @@ void FreeFAE(int FAEIdx)
         FAT0[FAEIdx].Taken=false;
 }
 
-void _Empty(int fileIDX)
+void _Empty(int OsaFILEIDX)
 {
-        int ffae = FDS0[fileIDX].FFAT;
-        if (fileIDX == -1 || fileIDX >= MFC || ffae == -1) return;
+        int ffae = FDS0[OsaFILEIDX].FFAT;
+        if (OsaFILEIDX == -1 || OsaFILEIDX >= MFC || ffae == -1) return;
         FreeFAE(ffae);
-        FDS0[fileIDX].FFAT=-1;
+        FDS0[OsaFILEIDX].FFAT=-1;
 }
 
-int FlFAE(int fileIDX)
+int FlFAE(int OsaFILEIDX)
 {
-        if (fileIDX == -1 || fileIDX >= MFC || FDS0[fileIDX].FFAT == -1) return -1;
-        int fae = FDS0[fileIDX].FFAT;
+        if (OsaFILEIDX == -1 || OsaFILEIDX >= MFC || FDS0[OsaFILEIDX].FFAT == -1) return -1;
+        int fae = FDS0[OsaFILEIDX].FFAT;
         int prev = 0;
         do
         {
@@ -143,22 +140,22 @@ int FlFAE(int fileIDX)
         return prev;
 }
 
-void AllocFAE(int fileIDX)
+void AllocFAE(int OsaFILEIDX)
 {
         int fafae = ffefae();
 
-        if (fileIDX == -1 || fileIDX >= MFC || fafae == -1) return;
+        if (OsaFILEIDX == -1 || OsaFILEIDX >= MFC || fafae == -1) return;
 
         FAT0[fafae].Taken = true;
-        FAT0[fafae].Fileidx=fileIDX;
+        FAT0[fafae].OsaFILEidx=OsaFILEIDX;
         FAT0[fafae].NextFAEIdx=0;
-        if (FDS0[fileIDX].FFAT == -1)
+        if (FDS0[OsaFILEIDX].FFAT == -1)
         {
-                FDS0[fileIDX].FFAT = fafae;
+                FDS0[OsaFILEIDX].FFAT = fafae;
                 return;
         }
 
-        int lastidx = FlFAE(fileIDX);
+        int lastidx = FlFAE(OsaFILEIDX);
         FAT0[lastidx].NextFAEIdx = fafae;
 }
 
@@ -192,10 +189,10 @@ void _CreateF(const char * name, int parent_idx)
         strncpy(FDS0[fefd].Name,name,16);
 }
 
-int ClusterCount(int fileIDX)
+int ClusterCount(int OsaFILEIDX)
 {
-        if (fileIDX == -1 || fileIDX >= MFC || FDS0[fileIDX].FFAT == -1) return 0;
-        int fae = FDS0[fileIDX].FFAT;
+        if (OsaFILEIDX == -1 || OsaFILEIDX >= MFC || FDS0[OsaFILEIDX].FFAT == -1) return 0;
+        int fae = FDS0[OsaFILEIDX].FFAT;
         int c=0;
         do
         {
@@ -263,23 +260,23 @@ void _WriteF(const char *name, int parent_idx, const char *data, int data_length
         }
 }
 
-FILE fgetf(const char * name, int parent_idx)
+OsaFILE Osafgetf(const char * name, int parent_idx)
 {
         int f = _Exists(name,parent_idx);
         return f;
 }
 
-int fputc(char c, FILE * fp)
+int Osafputc(char c, OsaFILE * fp)
 {
     if (*fp <= 0 || *fp > MFC)
         return -1;
 
-    int fileIdx = *fp-1;
-    if (!FDS0[fileIdx].Exists)
+    int OsaFILEIdx = *fp-1;
+    if (!FDS0[OsaFILEIdx].Exists)
         return -1;
 
-    int pos = FDS0[fileIdx].Size;
-    int clusterIdx = FDS0[fileIdx].FFAT;
+    int pos = FDS0[OsaFILEIdx].Size;
+    int clusterIdx = FDS0[OsaFILEIdx].FFAT;
     int br = 0;
 
     while (clusterIdx != -1 && br + CLUSTSZ <= pos)
@@ -290,15 +287,15 @@ int fputc(char c, FILE * fp)
 
     if (clusterIdx == -1) // Allocate a new cluster if needed
     {
-        AllocFAE(fileIdx);
-        clusterIdx = FlFAE(fileIdx);
+        AllocFAE(OsaFILEIdx);
+        clusterIdx = FlFAE(OsaFILEIdx);
         if (clusterIdx == -1)
             return -1;
     }
 
     int clusterOffset = pos - br;
     FAT0[clusterIdx].Cluster[clusterOffset] = c;
-    FDS0[fileIdx].Size++;
+    FDS0[OsaFILEIdx].Size++;
     return 0;
 }
 
@@ -306,51 +303,51 @@ static int pos[MFC] = {0};
 
 enum    SEEK_T
 {
-        SEEK_SET,
-        SEEK_CUR,
-        SEEK_END,
+        OSA_SEEK_SET,
+        OSA_SEEK_CUR,
+        OSA_SEEK_END,
 };
 
-void fseek(FILE fp, int p, int t)
+void Osafseek(OsaFILE fp, int p, int t)
 {
         if (fp <= 0 || fp > MFC)
                 return;
-        int fileIdx = fp-1;
-        if (!FDS0[fileIdx].Exists || FDS0[fileIdx].FFAT == -1)
+        int OsaFILEIdx = fp-1;
+        if (!FDS0[OsaFILEIdx].Exists || FDS0[OsaFILEIdx].FFAT == -1)
                 return;
         
         if (t == (int)SEEK_SET)
         {
-                pos[fileIdx] = p;
+                pos[OsaFILEIdx] = p;
         }
         else if (t == (int)SEEK_CUR)
         {
-                pos[fileIdx] += p;
+                pos[OsaFILEIdx] += p;
         }
         else if (t == (int)SEEK_END)
         {
-                pos[fileIdx]  = FDS0[fileIdx].Size;
-                pos[fileIdx] += p;
+                pos[OsaFILEIdx]  = FDS0[OsaFILEIdx].Size;
+                pos[OsaFILEIdx] += p;
         }
 }
 
-inline void rewind(FILE fp)
+inline void Osarewind(OsaFILE fp)
 {
-        fseek(fp,0,SEEK_END);
+        Osafseek(fp,0,SEEK_END);
 }
 
-char fgetc(FILE fp)
+char Osafgetc(OsaFILE fp)
 {
         if (fp <= 0 || fp > MFC)
                 return -1;
 
-        int fileIdx = fp-1;
-        if (!FDS0[fileIdx].Exists || FDS0[fileIdx].FFAT == -1)
+        int OsaFILEIdx = fp-1;
+        if (!FDS0[OsaFILEIdx].Exists || FDS0[OsaFILEIdx].FFAT == -1)
                 return -1;
 
-        int ci = FDS0[fileIdx].FFAT;
-        int p = pos[fileIdx];
-        if (p>FDS0[fileIdx].Size)
+        int ci = FDS0[OsaFILEIdx].FFAT;
+        int p = pos[OsaFILEIdx];
+        if (p>FDS0[OsaFILEIdx].Size)
         {
                 return -1;
         }
@@ -366,7 +363,7 @@ char fgetc(FILE fp)
                 return -1;
 
         char ch = FAT0[ci].Cluster[p - br];
-        pos[fileIdx]++;
+        pos[OsaFILEIdx]++;
 
         return ch;
 }
@@ -414,7 +411,7 @@ void ListF()
         }
 }
 
-int ftell(FILE fp)
+int Osaftell(OsaFILE fp)
 {
         if (fp <= 0 || fp > MFC)
                 return 0;
@@ -464,7 +461,7 @@ const char * ActiveDirParen()
         return FDS0[FDS0[current_path_idx].ParentIdx].Name;
 }
 
-void fwrite(void * buff, int size, int count, FILE * fp)
+void Osafwrite(void * buff, int size, int count, OsaFILE * fp)
 {
         if (*fp == 0 || !size || !count)
         {
@@ -474,7 +471,7 @@ void fwrite(void * buff, int size, int count, FILE * fp)
         WriteF(name,buff,size*count);
 }
 
-void fread(void * buff, int size, int count, FILE * fp)
+void Osafread(void * buff, int size, int count, OsaFILE * fp)
 {
         if (*fp == 0 || !size || !count)
         {
