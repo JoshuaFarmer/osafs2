@@ -1,0 +1,1 @@
+gcc osafs2.c -o osafs2 -Wno-builtin-declaration-mismatch
